@@ -1,0 +1,90 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+  <title>NSFW Chatbot</title>
+  <style>
+    body { font-family: sans-serif; margin: 20px; }
+    #chat { height: 400px; overflow-y: auto; border: 1px solid #ccc; padding: 10px; }
+    .user { color: blue; }
+    .girl { color: crimson; }
+    .narrator { color: darkslategray; font-style: italic; }
+    img { max-width: 300px; display: block; margin-top: 10px; }
+  </style>
+</head>
+<body>
+  <h2>NSFW Chatbot</h2>
+  <div id="chat"></div>
+  <input type="text" id="messageInput" placeholder="Deine Nachricht" />
+  <button onclick="sendMessage()">Senden</button>
+
+  <script>
+    const chat = document.getElementById('chat');
+    const chatHistory = [];
+
+    function appendMessage(role, text) {
+      const div = document.createElement('div');
+      div.className = role;
+      div.innerText = `${role}: ${text}`;
+      chat.appendChild(div);
+
+      if (role === 'narrator') {
+        const btn = document.createElement('button');
+        btn.textContent = '🖼 Bild generieren';
+        btn.onclick = () => generateImage(text, div);
+        div.appendChild(btn);
+      }
+
+      chat.scrollTop = chat.scrollHeight;
+    }
+
+    async function sendMessage() {
+      const input = document.getElementById('messageInput');
+      const msg = input.value;
+      input.value = '';
+      appendMessage('user', msg);
+      chatHistory.push({ role: 'user', content: msg });
+
+      const res = await fetch('/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userMessage: msg, chatHistory })
+      });
+
+      const data = await res.json();
+      const parts = data.reply.split('---');
+      if (parts[0]) appendMessage('narrator', parts[0].trim());
+      if (parts[1]) appendMessage('girl', parts[1].trim());
+      chatHistory.push({ role: 'assistant', content: data.reply });
+    }
+
+    async function generateImage(prompt, parentDiv) {
+      const status = document.createElement('p');
+      status.innerText = '⏳ Generiere Bild...';
+      parentDiv.appendChild(status);
+
+      const res = await fetch('/generate-image', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt })
+      });
+
+      const { id } = await res.json();
+
+      const pollImage = async () => {
+        const pollRes = await fetch(`/check-image/${id}`);
+        const data = await pollRes.json();
+        if (data.done) {
+          const img = document.createElement('img');
+          img.src = data.image;
+          status.replaceWith(img);
+        } else {
+          setTimeout(pollImage, 5000);
+        }
+      };
+
+      setTimeout(pollImage, 5000);
+    }
+  </script>
+</body>
+</html>
